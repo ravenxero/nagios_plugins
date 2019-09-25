@@ -1,0 +1,61 @@
+#!/bin/bash
+###
+#
+# Script for checking the cluster status and returning node information.
+# OK = check on Master node
+# WARN = check on redundent node
+# CRIT = RHCS not started
+#
+# Written by David Pickwell
+# Copyright:: 2017, The Authors, All Rights Reserved
+#
+###
+
+if [[ ! -f '/usr/sbin/clustat' && ! -f '/sbin/pcs' ]]; then
+  # Return on OKAY, as RHCS isn't installed
+  RETVAL=0
+  RETSTR="RHCS/PCS isn't installed."
+  echo $RETSTR
+  exit $RETVAL
+fi
+
+if [ $# -ne 1 ]; then
+  printf "You didn't pass enough arguments!\n\nUsage: $0 <service_name>\n"
+  exit 127
+fi
+
+SERVICE=$1
+RETVAL=0
+
+#Check that the cluster is running.
+if [ -f '/usr/sbin/clustat' ]; then
+  RUNNING=`/usr/sbin/clustat | grep $SERVICE`
+  SOFTWARE='RHCS'
+else
+  RUNNING=`/sbin/pcs status | grep $SERVICE`
+  SOFTWARE='PCS'
+fi
+
+if [ `echo $RUNNING | grep -i started | wc -l` -ne 1 ];
+then
+  #Service is NOT running, let's alert!!!
+  RETVAL=2
+  RETSTR="$SOFTWARE is not running or has failed - $RUNNING"
+else
+  #Is this the node that the cluster is running on?
+  HOSTNAME=`hostname -s`
+  #Compare this to the hostname
+  if [ `echo $RUNNING | grep -i started | grep $HOSTNAME | wc -l` -eq 1 ];
+  then
+    # Were running on the Node, lets send an OKAY
+    RETVAL=0
+    RETSTR="This is the Owner node running $SOFTWARE service $1"
+  else
+    # The cluster is up, but not running on this node, let's just WARN.
+    RETVAL=1
+    RETSTR="This is the redundent node of the $SOFTWARE service $1"
+  fi
+fi
+
+echo $RETSTR
+exit $RETVAL
